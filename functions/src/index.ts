@@ -169,13 +169,16 @@ exports.getAnswer = functions.region("australia-southeast1").https.onRequest(asy
   try {
     if (sessionDocumentData.exists) {
       const answer = sessionDocumentData.get("answer");
-      sendSuccessResponse(response, answer);
+
+      if (answer) {
+        sendSuccessResponse(response, answer);
+      } else {
+        sendErrorResponse(response, 404, "Session answer not found");
+      }
     } else {
-      sendErrorResponse(response, 404, "Session answer not found");
+      sendErrorResponse(response, 403, "Session does not exist");
     }
   } catch (error) {
     sendErrorResponse(response, 500, `Error: ${error}`);
   }
 });
-
-
