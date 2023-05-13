@@ -3,7 +3,7 @@ import * as admin from "firebase-admin";
 
 admin.initializeApp();
 
-interface SessionData {
+interface ConnectionData {
     password?: string;
     offer?: string;
     answer?: string;
@@ -18,14 +18,14 @@ function sendErrorResponse(response: functions.Response, status: number, message
 }
 
 /**
- * Checks if a session ID is valid.
- * Valid session IDs are non-empty strings and are limited to 100 characters.
+ * Checks if a connection name is valid.
+ * Valid names are non-empty strings and are limited to 100 characters.
  *
- * @param sessionID The ID to check
- * @returns true if the ID is valid, otherwise false
+ * @param connectionName The name to check
+ * @returns true if the name is valid, otherwise false
  */
-function isValidSessionID(sessionID: string) {
-  if (!sessionID || sessionID.length > 100) {
+function isValidConnectionName(connectionName: string) {
+  if (!connectionName || connectionName.length > 100) {
     return false;
   }
 
@@ -33,21 +33,20 @@ function isValidSessionID(sessionID: string) {
 }
 
 /**
- * Function for publishing a new session offer.
- * The request body should contain a session ID and an offer SDP.
- * Optionally, the request body can also contain a password.
- * This will result in a new document created in the database, with the document ID equal to the session ID.
+ * Function for publishing a new connection offer.
+ * The request body should contain a connection name, password and an offer SDP.
+ * This will result in a new document created in the database, with the document ID equal to the connection name.
  */
-exports.sessionOffer = functions.region("australia-southeast1").https.onRequest(async (request, response) => {
-  const sessionID: string = request.body.sessionID?.toString() ?? "";
+exports.connectionOffer = functions.region("australia-southeast1").https.onRequest(async (request, response) => {
+  const connectionName: string = request.body.connectionName?.toString() ?? "";
 
-  if (!isValidSessionID(sessionID)) {
-    sendErrorResponse(response, 403, "Invalid session ID");
+  if (!isValidConnectionName(connectionName)) {
+    sendErrorResponse(response, 403, "Invalid connection name");
 
     return;
   }
 
-  const offer: SessionData = {
+  const offer: ConnectionData = {
     password: request.body.password ?? "",
     offer: request.body.offer ?? ""
   };
@@ -58,10 +57,10 @@ exports.sessionOffer = functions.region("australia-southeast1").https.onRequest(
     return;
   }
 
-  const sessionDocumentData = admin.firestore().collection("sessions").doc(sessionID);
+  const connectionDocumentData = admin.firestore().collection("connections").doc(connectionName);
 
   try {
-    await sessionDocumentData.set(offer, {merge: true});
+    await connectionDocumentData.set(offer, {merge: true});
     sendSuccessResponse(response, "Success");
   } catch (error) {
     sendErrorResponse(response, 500, `Error: ${error}`);
@@ -69,26 +68,25 @@ exports.sessionOffer = functions.region("australia-southeast1").https.onRequest(
 });
 
 /**
- * Function for retrieving a session offer SDP.
- * The request query parameters should contain the session ID.
- * If the session was created with a password, the request query parameters should contain a matching password.
+ * Function for retrieving a connection offer SDP.
+ * The request query parameters should contain the connection name and a matching password.
  */
 exports.getOffer = functions.region("australia-southeast1").https.onRequest(async (request, response) => {
-  const sessionID: string = request.query.sessionID?.toString() ?? "";
+  const connectionName: string = request.query.connectionName?.toString() ?? "";
   const requestPassword: string = request.query.password?.toString() ?? "";
 
-  if (!isValidSessionID(sessionID)) {
-    sendErrorResponse(response, 403, "Invalid session ID");
+  if (!isValidConnectionName(connectionName)) {
+    sendErrorResponse(response, 403, "Invalid connection name");
 
     return;
   }
 
-  const sessionDocumentData = await admin.firestore().collection("sessions").doc(sessionID).get();
+  const connectionDocumentData = await admin.firestore().collection("connections").doc(connectionName).get();
 
   try {
-    if (sessionDocumentData.exists) {
-      const offer = sessionDocumentData.get("offer");
-      const storedPassword = sessionDocumentData.get("password")?.toString();
+    if (connectionDocumentData.exists) {
+      const offer = connectionDocumentData.get("offer");
+      const storedPassword = connectionDocumentData.get("password")?.toString();
 
       if (storedPassword) {
         if (requestPassword != storedPassword) {
@@ -99,7 +97,7 @@ exports.getOffer = functions.region("australia-southeast1").https.onRequest(asyn
       }
       sendSuccessResponse(response, offer);
     } else {
-      sendErrorResponse(response, 404, "Session offer not found");
+      sendErrorResponse(response, 404, "Connection offer not found");
     }
   } catch (error) {
     sendErrorResponse(response, 500, `Error: ${error}`);
@@ -108,25 +106,24 @@ exports.getOffer = functions.region("australia-southeast1").https.onRequest(asyn
 
 /**
  * Function for publishing an answer SDP for an existing offer.
- * The request body should contain the session ID and an answer SDP.
- * If the session offer was created with a password, the request body should contain a matching password.
+ * The request body should contain the connection name, password and an answer SDP.
  */
-exports.sessionAnswer = functions.region("australia-southeast1").https.onRequest(async (request, response) => {
-  const sessionID: string = request.body.sessionID?.toString() ?? "";
+exports.connectionAnswer = functions.region("australia-southeast1").https.onRequest(async (request, response) => {
+  const connectionName: string = request.body.connectionName?.toString() ?? "";
   const requestPassword: string = request.body.password?.toString() ?? "";
 
-  if (!isValidSessionID(sessionID)) {
-    sendErrorResponse(response, 403, "Invalid session ID");
+  if (!isValidConnectionName(connectionName)) {
+    sendErrorResponse(response, 403, "Invalid connection name");
 
     return;
   }
 
-  const sessionDocument = admin.firestore().collection("sessions").doc(sessionID);
-  const sessionDocumentData = await sessionDocument.get();
+  const connectionDocument = admin.firestore().collection("connections").doc(connectionName);
+  const connectionDocumentData = await connectionDocument.get();
 
   try {
-    if (sessionDocumentData.exists) {
-      const storedPassword = sessionDocumentData.get("password")?.toString();
+    if (connectionDocumentData.exists) {
+      const storedPassword = connectionDocumentData.get("password")?.toString();
 
       if (storedPassword) {
         if (requestPassword != storedPassword) {
@@ -135,16 +132,16 @@ exports.sessionAnswer = functions.region("australia-southeast1").https.onRequest
           return;
         }
       }
-      if (!sessionDocumentData.get("offer")) {
-        sendErrorResponse(response, 403, "Session offer not found");
+      if (!connectionDocumentData.get("offer")) {
+        sendErrorResponse(response, 403, "Connection offer not found");
 
         return;
       }
-      const answer: SessionData = {answer: request.body.answer ?? ""};
-      await sessionDocument.set(answer, {merge: true});
+      const answer: ConnectionData = {answer: request.body.answer ?? ""};
+      await connectionDocument.set(answer, {merge: true});
       sendSuccessResponse(response, "Success");
     } else {
-      sendErrorResponse(response, 404, "Session offer not found");
+      sendErrorResponse(response, 404, "Connection offer not found");
     }
   } catch (error) {
     sendErrorResponse(response, 500, `Error: ${error}`);
@@ -153,30 +150,30 @@ exports.sessionAnswer = functions.region("australia-southeast1").https.onRequest
 
 /**
  * Function for retrieving an answer SDP.
- * The request query parameters should contain the session ID.
+ * The request query parameters should contain the connection name.
  */
 exports.getAnswer = functions.region("australia-southeast1").https.onRequest(async (request, response) => {
-  const sessionID: string = request.query.sessionID?.toString() ?? "";
+  const connectionName: string = request.query.connectionName?.toString() ?? "";
 
-  if (!isValidSessionID(sessionID)) {
-    sendErrorResponse(response, 403, "Invalid session ID");
+  if (!isValidConnectionName(connectionName)) {
+    sendErrorResponse(response, 403, "Invalid connection name");
 
     return;
   }
 
-  const sessionDocumentData = await admin.firestore().collection("sessions").doc(sessionID).get();
+  const connectionDocumentData = await admin.firestore().collection("connections").doc(connectionName).get();
 
   try {
-    if (sessionDocumentData.exists) {
-      const answer = sessionDocumentData.get("answer");
+    if (connectionDocumentData.exists) {
+      const answer = connectionDocumentData.get("answer");
 
       if (answer) {
         sendSuccessResponse(response, answer);
       } else {
-        sendErrorResponse(response, 404, "Session answer not found");
+        sendErrorResponse(response, 404, "Connection answer not found");
       }
     } else {
-      sendErrorResponse(response, 403, "Session does not exist");
+      sendErrorResponse(response, 403, "Connection does not exist");
     }
   } catch (error) {
     sendErrorResponse(response, 500, `Error: ${error}`);
